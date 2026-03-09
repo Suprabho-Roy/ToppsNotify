@@ -7,9 +7,9 @@ import random
 # --- CONFIGURATION ---
 FILE_NAME = "known_products.txt"
 
-# Paste your credentials here
-TELEGRAM_BOT_TOKEN = "8674897785:AAEhhOSbojHsqne302Dq9rJtxMBeWkJ5-wI"
-TELEGRAM_CHAT_ID = "954503704"
+# This pulls the data safely from GitHub Secrets
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
 
 
 def send_telegram_alert(product_name, product_url):
@@ -114,4 +114,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
