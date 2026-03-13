@@ -72,47 +72,52 @@ def scrape_sitemap_recursively(url, visited=None):
 
     return products_found
 
-
 def main():
-    print("--- Starting Topps India Sniper ---")
+    print("--- Starting Topps India Hourly Sniper Loop ---")
+    
+    # Run 11 times, waiting 5 minutes in between (total ~55 mins)
+    for cycle in range(11):
+        print(f"\n[Cycle {cycle + 1}/11] Checking Topps Sitemap...")
+        
+        master_url = "https://in.topps.com/sitemap.xml"
+        current_products = scrape_sitemap_recursively(master_url)
+        
+        if not current_products:
+            print("Scan failed. Waiting for next cycle.")
+        else:
+            # Baseline check
+            if not os.path.exists(FILE_NAME):
+                with open(FILE_NAME, "w", encoding="utf-8") as f:
+                    for handle in current_products.keys():
+                        f.write(f"{handle}\n")
+                print(f"Baseline set with {len(current_products)} products.")
+            else:
+                # Load known products
+                with open(FILE_NAME, "r", encoding="utf-8") as f:
+                    known_products = set(line.strip() for line in f if line.strip())
 
-    master_url = "https://in.topps.com/sitemap.xml"
-    current_products = scrape_sitemap_recursively(master_url)
+                # Detect new items
+                current_handles = set(current_products.keys())
+                new_handles = current_handles - known_products
 
-    if not current_products:
-        print("Scan failed or website unreachable.")
-        return
-
-    # Create the file on the first run to set the baseline
-    if not os.path.exists(FILE_NAME):
-        with open(FILE_NAME, "w", encoding="utf-8") as f:
-            for handle in current_products.keys():
-                f.write(f"{handle}\n")
-        print(f"Baseline set with {len(current_products)} products. Monitoring starts now.")
-        return
-
-    # Load known products
-    with open(FILE_NAME, "r", encoding="utf-8") as f:
-        known_products = set(line.strip() for line in f if line.strip())
-
-    # Detect new items
-    current_handles = set(current_products.keys())
-    new_handles = current_handles - known_products
-
-    if new_handles:
-        print(f"Found {len(new_handles)} NEW products!")
-        for handle in new_handles:
-            item = current_products[handle]
-            print(f"Alerting: {item['title']}")
-            send_telegram_alert(item['title'], item['link'])
-
-            # Add new item to the file immediately
-            with open(FILE_NAME, "a", encoding="utf-8") as f:
-                f.write(f"{handle}\n")
-    else:
-        print("No new products found.")
-
+                if new_handles:
+                    print(f"Found {len(new_handles)} NEW products!")
+                    for handle in new_handles:
+                        item = current_products[handle]
+                        print(f"Alerting: {item['title']}")
+                        send_telegram_alert(item['title'], item['link'])
+                        
+                        # Add new item
+                        with open(FILE_NAME, "a", encoding="utf-8") as f:
+                            f.write(f"{handle}\n")
+                else:
+                    print("No new products found this cycle.")
+        
+        # Don't sleep on the very last cycle so the GitHub Action can finish
+        if cycle < 10:
+            print("Waiting 5 minutes before next check...")
+            time.sleep(300) # 300 seconds = 5 minutes
 
 if __name__ == "__main__":
-
     main()
+
