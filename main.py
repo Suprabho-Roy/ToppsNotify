@@ -7,15 +7,14 @@ import random
 # --- CONFIGURATION ---
 FILE_NAME = "known_products.txt"
 
-# This pulls the data safely from GitHub Secrets
+# Pulling secure credentials from GitHub Secrets
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("CHAT_ID")
-
 
 def send_telegram_alert(product_name, product_url):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": TELEGRAM_CHAT_ID, 
         "text": f"🚨 NEW TOPPS DROP DETECTED!\n\n{product_name}\n{product_url}"
     }
     try:
@@ -23,80 +22,80 @@ def send_telegram_alert(product_name, product_url):
     except Exception as e:
         print(f"Failed to send Telegram alert: {e}")
 
-
 def scrape_sitemap_recursively(url, visited=None):
     if visited is None:
         visited = set()
-
+    
+    # Prevent infinite loops if sitemaps link to each other
     if url in visited:
         return {}
     visited.add(url)
-
+    
     print(f"Checking sitemap: {url}")
     products_found = {}
-
+    
     try:
-        # Using chrome110 for maximum stability
+        # The Cloudflare bypass (Impersonating Chrome)
         response = requests.get(url, impersonate="chrome110", timeout=30)
         if response.status_code != 200:
             return products_found
-
+            
         soup = BeautifulSoup(response.content, 'xml')
-
+        
         for loc in soup.find_all('loc'):
             link = loc.text.strip()
-
-            # If it's another sitemap, dive deeper
+            
+            # If it's a nested sitemap, drill down
             if link.endswith('.xml'):
-                # Short human-like delay before hitting the next sitemap
+                # Micro-jitter delay between pages to look human
                 time.sleep(random.uniform(1.0, 2.5))
                 products_found.update(scrape_sitemap_recursively(link, visited))
-
+                
             # If it's a real product link
             elif '/products/' in link and not link.endswith('.xml'):
                 handle = link.split('/products/')[-1]
-
-                # Get title from image tag if available
+                
+                # Try to extract the official title
                 parent = loc.parent
                 title_tag = parent.find('image:title') if parent else None
-
+                
                 if title_tag and title_tag.text:
                     title = title_tag.text
                 else:
                     title = handle.replace('-', ' ').title()
-
+                    
                 products_found[handle] = {"title": title, "link": link}
-
+                
     except Exception as e:
         print(f"Error scanning {url}: {e}")
-
+        
     return products_found
 
 def main():
     print("--- Starting Topps India Hourly Sniper Loop ---")
     
-    # Run 11 times, waiting 5 minutes in between (total ~55 mins)
+    # Run 11 times per hour (~55 minutes total runtime)
     for cycle in range(11):
-        print(f"\n[Cycle {cycle + 1}/11] Checking Topps Sitemap...")
+        print(f"\n[Cycle {cycle + 1}/11] Scanning Topps Backend...")
         
         master_url = "https://in.topps.com/sitemap.xml"
         current_products = scrape_sitemap_recursively(master_url)
         
         if not current_products:
-            print("Scan failed. Waiting for next cycle.")
+            print("Scan failed or website unreachable. Waiting for next cycle.")
         else:
-            # Baseline check
+            # First-ever run: Set the baseline database
             if not os.path.exists(FILE_NAME):
                 with open(FILE_NAME, "w", encoding="utf-8") as f:
                     for handle in current_products.keys():
                         f.write(f"{handle}\n")
-                print(f"Baseline set with {len(current_products)} products.")
+                print(f"Baseline set with {len(current_products)} products. Monitoring starts next cycle.")
             else:
-                # Load known products
+                # Normal run: Load known products
                 with open(FILE_NAME, "r", encoding="utf-8") as f:
                     known_products = set(line.strip() for line in f if line.strip())
 
-                # Detect new items
+                # Detect new items by comparing lists
                 current_handles = set(current_products.keys())
                 new_handles = current_handles - known_products
 
@@ -107,17 +106,20 @@ def main():
                         print(f"Alerting: {item['title']}")
                         send_telegram_alert(item['title'], item['link'])
                         
-                        # Add new item
+                        # Add the new item to the file immediately
                         with open(FILE_NAME, "a", encoding="utf-8") as f:
                             f.write(f"{handle}\n")
                 else:
                     print("No new products found this cycle.")
         
-        # Don't sleep on the very last cycle so the GitHub Action can finish
+        # Randomize the macro-delay between 4 and 6 minutes to stay stealthy
+        # Skip the delay on the final cycle so GitHub can save the file and shut down cleanly
         if cycle < 10:
-            print("Waiting 5 minutes before next check...")
-            time.sleep(300) # 300 seconds = 5 minutes
+            sleep_time = random.uniform(240, 360) 
+            print(f"Cycle complete. Sleeping for {int(sleep_time)} seconds to evade detection...")
+            time.sleep(sleep_time)
+
+    print("\nHourly loop finished. Handing back to GitHub Actions to save and restart.")
 
 if __name__ == "__main__":
     main()
-
